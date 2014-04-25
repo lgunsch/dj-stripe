@@ -22,6 +22,7 @@ import stripe
 from . import exceptions
 from .managers import CustomerManager, ChargeManager, TransferManager
 from .settings import PAYMENTS_PLANS, INVOICE_FROM_EMAIL
+from .settings import DJSTRIPE_PLANS_AS_MODELS
 from .settings import plan_from_stripe_id
 from .signals import WEBHOOK_SIGNALS
 from .signals import subscription_made, cancelled, card_changed
@@ -890,6 +891,32 @@ INTERVALS = (
     ('year', 'Year',))
 
 
+# This allows the object returned from Plan.from_stripe_id to have
+# the same interface regardless of whether its a settings plan,
+# or a model plan.
+class StaticPlan(object):
+    """Value object representing a plan from the settings."""
+
+    def __init__(self, id, settings_plan):
+        self._id = id
+        self._plan = settings_plan
+
+    @property
+    def amount(self):
+        return self._plan['price'] / decimal.Decimal('100')
+
+    def __getattr__(self, attr):
+        if attr in self._plan:
+            return self._plan[attr]
+        elif attr == 'id':
+            return self._id
+        else:
+            raise AttributeError('attribute {0} does not exist'.format(attr))
+
+    def __eq__(self, other):
+        return True if self._id == other._id else False
+
+
 class Plan(StripeObject):
     """A Stripe Plan."""
 
@@ -968,3 +995,20 @@ class Plan(StripeObject):
     def stripe_plan(self):
         """Return the plan data from Stripe."""
         return stripe.Plan.retrieve(self.stripe_id)
+
+    @classmethod
+    def get_form_choices(cls):
+        """TODO: implement me."""
+
+    @classmethod
+    def from_stripe_id(cls, stripe_id):
+        """Returns either a `StaticPlan`, if `DJSTRIPE_PLANS_AS_MODELS` is
+        `True`, or a `Plan` model, when given its stripe id."""
+        if DJSTRIPE_PLANS_AS_MODELS:
+            return cls.objects.get(stripe_id=stripe_id)
+        else:
+            for key in PAYMENTS_PLANS.keys():
+                if PAYMENTS_PLANS[key].get("stripe_plan_id") == stripe_id:
+                    return StaticPlan(key, PAYMENTS_PLANS[key])
+            else:
+                raise Plan.DoesNotExist('Plan in settings does not exist.')

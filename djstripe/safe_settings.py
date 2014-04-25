@@ -8,6 +8,7 @@ INVOICE_FROM_EMAIL = getattr(
     "DJSTRIPE_INVOICE_FROM_EMAIL",
     "billing@example.com"
 )
+DJSTRIPE_PLANS_AS_MODELS = False
 PAYMENTS_PLANS = getattr(settings, "DJSTRIPE_PLANS", {})
 PLAN_CHOICES = [
     (plan, PAYMENTS_PLANS[plan].get("name", plan))
